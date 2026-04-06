@@ -1,6 +1,27 @@
 # PawPal+ (Module 2 Project)
 
-You are building **PawPal+**, a Streamlit app that helps a pet owner plan care tasks for their pet.
+> A smart daily care scheduler for busy pet owners — built with Python and Streamlit.
+
+## 📸 Demo
+
+<a href="/course_images/ai110/pawpal_demo.png" target="_blank"><img src='/course_images/ai110/pawpal_demo.png' title='PawPal App' width='' alt='PawPal App' class='center-block' /></a>
+
+---
+
+## ✨ Features
+
+| Feature | Description |
+|---|---|
+| **Owner & pet setup** | Enter the owner's name, daily available time (minutes), and pet details before generating a plan |
+| **Task management** | Add care tasks with name, category, duration, frequency, start time, and required/optional flag |
+| **Priority scheduling** | Required tasks are always scheduled before optional ones; tasks are dropped if they exceed the time budget |
+| **Sort by time** | The daily plan is sorted chronologically using `sorted()` with a `lambda` key on `"HH:MM"` strings — no datetime parsing needed |
+| **Filter by pet or status** | Narrow the plan to a specific pet or show only pending/completed tasks using case-insensitive AND filtering |
+| **Daily & weekly recurrence** | Completing a task auto-creates the next occurrence using `timedelta` — daily tasks reappear tomorrow, weekly tasks reappear in 7 days |
+| **Conflict detection** | Every pair of timed tasks is compared with an interval-overlap test (`a_start < b_end and b_start < a_end`); overlaps are shown as `⚠️` warnings in the UI before the owner starts their day |
+| **17 automated tests** | `pytest` suite covers sorting, recurrence, conflict detection, edge cases, and filters — all passing |
+
+---
 
 ## Scenario
 
