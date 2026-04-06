@@ -57,6 +57,33 @@ warning strings — the program never crashes on a conflict.
 
 ---
 
+## Testing PawPal+
+
+### Run the tests
+
+```bash
+python -m pytest tests/test_pawpal.py -v
+```
+
+### What the tests cover
+
+| Area | Tests | What's verified |
+|---|---|---|
+| **Sorting** | 2 | Tasks added out of order come back `07:30 → 08:00 → 14:00`; tasks with no `start_time` sort to the end |
+| **Recurrence** | 4 | Daily task → due tomorrow; weekly → due in 7 days; one-off → returns `None`; `complete_task()` adds the new task to the pet |
+| **Conflict detection** | 4 | Same-pet overlap flagged; cross-pet overlap flagged; back-to-back tasks not flagged; no false positives when `start_time` is missing |
+| **Edge cases** | 5 | Pet with no tasks; owner with 0 minutes; required tasks before optional; case-insensitive filter; filter by completion status |
+
+**17 tests total — 17 passing.**
+
+### Confidence level
+
+★★★★☆ (4/5)
+
+The core scheduling logic — plan generation, sorting, filtering, recurring tasks, and conflict detection — is fully covered with both happy-path and edge-case tests. One star is held back because tasks without a `start_time` are silently skipped by conflict detection rather than warned about, and there is no test coverage for the Streamlit UI layer in `app.py`.
+
+---
+
 ## Getting started
 
 ### Setup
