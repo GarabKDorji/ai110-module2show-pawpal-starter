@@ -7,6 +7,21 @@
 - Briefly describe your initial UML design.
 - What classes did you include, and what responsibilities did you assign to each?
 
+Owner — represents the person using the app. Responsible for storing their name, availability, and care preferences, and for viewing their task list.
+
+Pet — represents each pet. Responsible for holding profile data (species, age, notes) and providing an up-to-date profile when needed.
+
+Task — represents a single care activity (e.g. feeding, grooming). Responsible for storing task details like category, duration, priority, and whether it's required.
+
+Scheduler — the core logic class. Responsible for managing the collection of tasks, generating a care plan based on the owner's available time, and explaining that plan.
+
+Relationships:
+
+An Owner owns one or more Pets
+An Owner uses one Scheduler
+A Scheduler manages zero or more Tasks
+A Task is assigned to a specific Pet
+
 **b. Design changes**
 
 - Did your design change during implementation?
@@ -23,8 +38,30 @@
 
 **b. Tradeoffs**
 
-- Describe one tradeoff your scheduler makes.
-- Why is that tradeoff reasonable for this scenario?
+**Tradeoff: O(n²) conflict detection vs. a sorted sweep**
+
+`detect_conflicts()` compares every pair of scheduled tasks using
+`itertools.combinations`, which is O(n²). A more efficient approach would be
+to sort tasks by `start_time` first and then do a single linear sweep,
+checking each task only against the one directly before it — O(n log n) total.
+
+The O(n²) approach was kept because:
+
+1. **Scale doesn't justify the complexity.** A typical pet owner schedules
+   fewer than 20 tasks per day. At that size the two approaches are
+   indistinguishable in speed, and the combinations loop is easier to read and
+   verify at a glance.
+
+2. **The linear sweep only catches adjacent conflicts.** If three tasks
+   overlap (A overlaps B, B overlaps C, A overlaps C), a naive sweep can miss
+   the A–C pair. The pairwise approach catches all combinations correctly
+   without extra bookkeeping.
+
+3. **Readability over micro-optimization.** For a scheduling assistant used by
+   a single owner, correctness and clarity matter more than shaving
+   microseconds. If the task list ever grew large (e.g., a pet hotel managing
+   hundreds of animals), switching to a sorted sweep or an interval tree would
+   be the right call.
 
 ---
 

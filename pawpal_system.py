@@ -1,14 +1,19 @@
 # pawpal_system.py
 
+from datetime import date, timedelta
+from itertools import combinations
+
 
 class Task:
-    def __init__(self, task_name, category, duration, frequency, required=False):
+    def __init__(self, task_name, category, duration, frequency, required=False, start_time=None, due_date=None):
         self.task_name = task_name
         self.category = category        # e.g. "feeding", "grooming", "exercise"
         self.duration = duration        # in minutes
         self.frequency = frequency      # e.g. "daily", "weekly"
         self.required = required
         self.completed = False
+        self.start_time = start_time    # "HH:MM" string, e.g. "08:00"
+        self.due_date = due_date or date.today()  # date object; defaults to today
 
     def edit_task(self, task_name=None, category=None, duration=None, frequency=None):
         """Update one or more fields of the task; unchanged fields are left as-is."""
@@ -26,17 +31,40 @@ class Task:
         self.required = True
 
     def mark_completed(self):
-        """Mark this task as done by setting completed to True."""
+        """
+        Mark this task as done and return a fresh Task for the next occurrence.
+        - "daily"  → due_date + 1 day   (timedelta(days=1))
+        - "weekly" → due_date + 7 days  (timedelta(days=7))
+        Returns None for one-off tasks (any other frequency string).
+        """
         self.completed = True
+
+        if self.frequency == "daily":
+            next_due = self.due_date + timedelta(days=1)
+        elif self.frequency == "weekly":
+            next_due = self.due_date + timedelta(days=7)
+        else:
+            return None  # non-recurring task — no follow-up created
+
+        return Task(
+            task_name=self.task_name,
+            category=self.category,
+            duration=self.duration,
+            frequency=self.frequency,
+            required=self.required,
+            start_time=self.start_time,
+            due_date=next_due,
+        )
 
     def get_task_details(self):
         """Return a formatted string summarizing all task attributes and status."""
         status = "Done" if self.completed else "Pending"
         required_label = "Required" if self.required else "Optional"
+        time_label = self.start_time if self.start_time else "No time set"
         return (
-            f"Task: {self.task_name} | Category: {self.category} | "
+            f"[{time_label}] Task: {self.task_name} | Category: {self.category} | "
             f"Duration: {self.duration} min | Frequency: {self.frequency} | "
-            f"{required_label} | Status: {status}"
+            f"Due: {self.due_date} | {required_label} | Status: {status}"
         )
 
 
@@ -157,6 +185,117 @@ class Scheduler:
                 time_remaining -= task.duration
 
         return self.generated_plan
+
+    def complete_task(self, pet_name, task_name):
+        """Mark a task done and automatically schedule its next occurrence.
+
+        Calls ``Task.mark_completed()``, which uses ``timedelta`` to calculate
+        the next due date — +1 day for "daily" tasks, +7 days for "weekly"
+        tasks — and returns a fresh ``Task`` object. That object is added back
+        to the pet so it appears in future calls to ``generate_plan()``.
+        One-off tasks (any other frequency) are marked done with no follow-up.
+
+        Args:
+            pet_name (str): Name of the pet whose task should be completed.
+                Comparison is case-insensitive.
+            task_name (str): Name of the task to complete.
+                Comparison is case-insensitive.
+
+        Returns:
+            None: Side effects only — marks the task complete and may append
+            a new Task to the pet's task list.
+        """
+        for pet in self.owner.pets:
+            if pet.name.lower() != pet_name.lower():
+                continue
+            for task in pet.tasks:
+                if task.task_name.lower() != task_name.lower():
+                    continue
+                next_task = task.mark_completed()
+                if next_task:
+                    pet.add_task(next_task)
+                    print(f"  ✓ '{task_name}' done. Next occurrence added for {next_task.due_date} ({next_task.frequency}).")
+                else:
+                    print(f"  ✓ '{task_name}' done. No recurrence (one-off task).")
+                return
+        print(f"  Task '{task_name}' not found for pet '{pet_name}'.")
+
+    def detect_conflicts(self):
+        """Check every pair of scheduled tasks for overlapping time windows.
+
+        Strategy: convert each "HH:MM" start_time to total minutes since
+        midnight, then apply the standard interval-overlap test —
+        ``a_start < b_end and b_start < a_end`` — for every unique pair via
+        ``itertools.combinations``. Tasks without a ``start_time`` are skipped
+        because their window cannot be determined.
+
+        Returns:
+            list[str]: Human-readable warning messages, one per conflict found.
+                Returns an empty list when no overlaps are detected. The program
+                never raises an exception from this method.
+
+        Example warning::
+
+            "CONFLICT: [Buddy] 'Morning Walk' (08:00, 30 min) overlaps with
+             [Buddy] 'Training' (08:15, 20 min)"
+        """
+        def to_minutes(hhmm):
+            h, m = map(int, hhmm.split(":"))
+            return h * 60 + m
+
+        timed = [(pn, t) for pn, t in self.generated_plan if t.start_time]
+        warnings = []
+
+        for (pn_a, task_a), (pn_b, task_b) in combinations(timed, 2):
+            a_start = to_minutes(task_a.start_time)
+            b_start = to_minutes(task_b.start_time)
+            if a_start < b_start + task_b.duration and b_start < a_start + task_a.duration:
+                warnings.append(
+                    f"  CONFLICT: [{pn_a}] '{task_a.task_name}' "
+                    f"({task_a.start_time}, {task_a.duration} min) overlaps with "
+                    f"[{pn_b}] '{task_b.task_name}' "
+                    f"({task_b.start_time}, {task_b.duration} min)"
+                )
+
+        return warnings
+
+    def sort_by_time(self):
+        """Sort the generated plan chronologically by each task's start_time.
+
+        Uses ``sorted()`` with a lambda key so that zero-padded "HH:MM" strings
+        compare correctly via lexicographic order ("08:00" < "09:30" < "14:00").
+        Tasks whose ``start_time`` is ``None`` are placed at the end of the list.
+
+        Returns:
+            list[tuple[str, Task]]: A new list of (pet_name, Task) pairs ordered
+            from earliest to latest start time.
+        """
+        return sorted(
+            self.generated_plan,
+            key=lambda pair: pair[1].start_time if pair[1].start_time else "99:99"
+        )
+
+    def filter_tasks(self, pet_name=None, completed=None):
+        """Filter the generated plan by pet name and/or completion status.
+
+        Both parameters are optional; omitting one means "no filter on that axis".
+        Filters are applied together (AND logic), so passing both narrows further.
+
+        Args:
+            pet_name (str | None): Keep only tasks belonging to this pet.
+                Comparison is case-insensitive. ``None`` keeps all pets.
+            completed (bool | None): ``True`` returns only finished tasks,
+                ``False`` returns only pending tasks, ``None`` returns both.
+
+        Returns:
+            list[tuple[str, Task]]: Filtered list of (pet_name, Task) pairs.
+        """
+        results = self.generated_plan
+        if pet_name is not None:
+            results = [(pn, t) for pn, t in results if pn.lower() == pet_name.lower()]
+        if completed is not None:
+            results = [(pn, t) for pn, t in results if t.completed == completed]
+        return results
 
     def explain_plan(self):
         """Print a human-readable summary of the generated plan."""
